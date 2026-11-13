@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Date Sorter</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;padding:12px;background:#f4f1e6;color:#222;box-sizing:border-box}
+#banner{padding:8px;border-radius:6px;font-weight:bold;margin-bottom:10px;overflow-wrap:anywhere}
+.pass{background:#cfe8c8}.fail{background:#f3c2c2}
+textarea{width:100%;height:140px;box-sizing:border-box;font:16px monospace}
+button{font-size:16px;padding:8px 14px;margin:8px 0;min-height:40px}
+button:active{background:#ddd}
+li.bad{color:#a22}
+h2{font-size:18px;margin-bottom:4px}
+</style></head><body>
+<h1>Date Sorter</h1>
+<div id="banner"></div>
+<label for="in">One date per line (YYYY-M-D):</label>
+<textarea id="in">2024-3-1
+2024-2-30
+2024-2-29
+2023-2-29
+1900-2-29
+2000-2-29
+2024-13-1
+2022-12-25
+hello
+2021-4-31</textarea>
+<button id="go">Sort</button>
+<h2>Sorted (valid)</h2><ol id="good"></ol>
+<h2>Rejected</h2><ul id="bad"></ul>
+<script>
+function parseDate(s){
+  const m=/^\s*(\d{1,4})-(\d{1,2})-(\d{1,2})\s*$/.exec(s);
+  if(!m)return null;
+  return [+m[1],+m[2],+m[3]];
+}
+function isLeap(y){return y%4===0&&(y%100!==0||y%400===0)}
+// deliberately broken: forgets the century rules
+function isLeapBroken(y){return y%4===0}
+function makeValid(leapFn,off){
+  return function(s){
+    const p=parseDate(s);
+    if(!p)return false;
+    const [y,mo,d]=p;
+    if(mo<1||mo>12||d<1||y<1)return false;
+    const len=[31,leapFn(y)?29:28,31,30,31,30,31,31,30,31,30,31][mo-1];
+    return d<=len+(off||0);
+  };
+}
+const isValidDate=makeValid(isLeap,0);
+const brokenA=makeValid(isLeapBroken,0);   // bad century rule
+const brokenB=makeValid(isLeap,1);         // off by one at month ends
+// like Python sorted(items, key=...)
+function sortedBy(arr,key){
+  return arr.map(x=>({x,k:key(x)})).sort((a,b)=>{
+    for(let i=0;i<a.k.length;i++)if(a.k[i]!==b.k[i])return a.k[i]-b.k[i];
+    return 0;
+  }).map(o=>o.x);
+}
+function sortDates(lines,valid){
+  valid=valid||isValidDate;
+  const good=[],bad=[];
+  lines.forEach(l=>{if(l.trim()==='')return;(valid(l)?good:bad).push(l.trim())});
+  return {good:sortedBy(good,parseDate),bad};
+}
+// [date, expected valid]
+const CASES=[
+  ['2024-2-28',true],['2024-2-29',true],['2024-2-30',false],['2024-3-1',true],
+  ['2023-2-28',true],['2023-2-29',false],['2023-3-1',true],
+  ['1900-2-28',true],['1900-2-29',false],['2000-2-29',true],['2000-2-30',false],
+  ['2024-1-31',true],['2024-1-32',false],
+  ['2024-3-31',true],['2024-3-32',false],
+  ['2024-4-30',true],['2024-4-31',false],
+  ['2024-5-31',true],['2024-5-32',false],
+  ['2024-6-30',true],['2024-6-31',false],
+  ['2024-7-31',true],['2024-7-32',false],
+  ['2024-8-31',true],['2024-8-32',false],
+  ['2024-9-30',true],['2024-9-31',false],
+  ['2024-10-31',true],['2024-10-32',false],
+  ['2024-11-30',true],['2024-11-31',false],
+  ['2024-12-31',true],['2024-12-32',false],
+  ['2024-0-10',false],['2024-12-0',false],['2024-13-1',false],
+  ['hello',false],['2024-1-0',false]
+];
+function runCases(valid){
+  return CASES.filter(c=>valid(c[0])!==c[1]).map(c=>c[0]);
+}
+function selfTest(){
+  const r=[];
+  const eq=(n,a,b)=>r.push([n,a===b]);
+  runCases(isValidDate).forEach(n=>r.push(['case '+n,false]));
+  r.push(['all '+CASES.length+' date cases',runCases(isValidDate).length===0]);
+  const s=sortDates(['2024-10-2','2024-2-30','2024-9-15','2023-12-31']);
+  eq('numeric order',s.good.join(),'2023-12-31,2024-9-15,2024-10-2');
+  eq('bad separated',s.bad.join(),'2024-2-30');
+  eq('broken A is rejected',runCases(brokenA).length>0,true);
+  eq('broken B is rejected',runCases(brokenB).length>0,true);
+  return r;
+}
+function render(){
+  const s=sortDates(document.getElementById('in').value.split('\n'));
+  const g=document.getElementById('good'),b=document.getElementById('bad');
+  g.innerHTML='';b.innerHTML='';
+  s.good.forEach(x=>{const li=document.createElement('li');li.textContent=x;g.appendChild(li)});
+  s.bad.forEach(x=>{const li=document.createElement('li');li.className='bad';li.textContent=x+' (not a real date)';b.appendChild(li)});
+}
+const ban=document.getElementById('banner');
+try{
+  const r=selfTest(),f=r.filter(t=>!t[1]);
+  ban.className=f.length?'fail':'pass';
+  ban.textContent=f.length?'FAIL: '+f.map(t=>t[0]).join(', '):'Self-test: all '+r.length+' passed (broken copies failed '+runCases(brokenA).length+' and '+runCases(brokenB).length+' cases, as they should)';
+}catch(e){ban.className='fail';ban.textContent='Self-test crashed: '+e.message}
+document.getElementById('go').onclick=render;
+render();
+</script></body></html>
